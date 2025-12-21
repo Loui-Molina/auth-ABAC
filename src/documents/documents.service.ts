@@ -23,6 +23,7 @@ export class DocumentsService {
   }
 
   async findOne(id: number): Promise<Document> {
+    this.logger.debug(`Fetching document with ID: ${id}`);
     const doc = await this.prisma.document.findUnique({ where: { id } });
     if (!doc) {
       this.logger.warn(`Document lookup failed: ID ${id}`);

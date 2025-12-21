@@ -8,14 +8,14 @@ import {
   MinLength,
 } from 'class-validator';
 import { Role } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
   @ApiProperty({ example: 'admin@company.com' })
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'Password123', minLength: 6 })
+  @ApiProperty({ example: 'password123', minLength: 6 })
   @IsString()
   @MinLength(6)
   password: string;
@@ -33,25 +33,25 @@ export class RegisterDto {
   @IsEnum(Role)
   role: Role;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 90000,
-    description: 'Financial info (Manager/Admin)',
+    description: 'Sensitive financial data (Manager/Admin only)',
   })
   @IsNumber()
   @IsOptional()
   salary?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '+1-555-0199',
-    description: 'Personal info',
+    description: 'PII: Personal Phone Number',
   })
   @IsString()
   @IsOptional()
   phoneNumber?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'ID-123456',
-    description: 'Personal Info',
+    description: 'SPII: National Gov ID (Strictly Restricted)',
   })
   @IsString()
   @IsOptional()
@@ -63,7 +63,7 @@ export class LoginDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'Password123' })
+  @ApiProperty({ example: 'password123' })
   @IsString()
   @IsNotEmpty()
   password: string;

@@ -16,6 +16,7 @@ export class UsersService {
   }
 
   async findOne(id: number): Promise<User> {
+    this.logger.debug(`Fetching user profile with ID: ${id}`);
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
       this.logger.warn(`User lookup failed: ID ${id} not found`);
@@ -26,7 +27,7 @@ export class UsersService {
   }
 
   async remove(id: number): Promise<User> {
-    this.logger.warn(`Deleting user with ID: ${id}`);
+    this.logger.log(`Request to delete user with ID: ${id}`);
     try {
       return await this.prisma.user.delete({ where: { id } });
     } catch (error) {

@@ -13,7 +13,12 @@ import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import { UsersService } from './users.service';
 import { RoleSerializerInterceptor } from '../common/interceptors/role-serializer.interceptor';
 import { UserEntity } from './entities/user.entity';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { subject } from '@casl/ability';
 import { User } from '@prisma/client';
@@ -31,6 +36,7 @@ export class UsersController {
 
   @Get()
   @ApiOperation({ summary: 'View all users (Managers/Admins)' })
+  @ApiResponse({ status: 200, type: [UserEntity] })
   async findAll(@Req() req: AuthenticatedRequest): Promise<UserEntity[]> {
     if (!req.user) throw new ForbiddenException();
 
@@ -47,6 +53,7 @@ export class UsersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get user profile' })
+  @ApiResponse({ status: 200, type: UserEntity })
   async findOne(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
@@ -69,6 +76,7 @@ export class UsersController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete user (Admin Only)' })
+  @ApiResponse({ status: 200, description: 'User deleted successfully' })
   async remove(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
@@ -77,6 +85,7 @@ export class UsersController {
 
     const ability = this.caslAbilityFactory.createForUser(req.user);
 
+    // Strict Endpoint Auth check: Only Admins have 'delete' on Users
     if (ability.cannot('delete', 'User')) {
       throw new ForbiddenException('Only Admins can delete users');
     }
