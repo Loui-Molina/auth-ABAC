@@ -1,0 +1,196 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from '../src/app.module';
+
+// Response interfaces
+interface AuthResponse {
+  accessToken: string;
+}
+
+interface UserResponse {
+  id: number;
+  email?: string;
+  role: string;
+  salary?: number;
+}
+
+interface DocumentResponse {
+  id: number;
+  ownerId: number;
+}
+
+describe('ABAC System - Challenge Requirements (E2E)', () => {
+  let app: INestApplication;
+
+  // Tokens
+  let userToken: string;
+  let managerToken: string;
+  let adminToken: string;
+
+  // IDs
+  // we reuse the ids
+  let targetUserId: number;
+  let targetDocId: number;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true }),
+    );
+    await app.init();
+
+    // 1. We create a user
+    const userRes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: `user_${Date.now()}@test.com`,
+        password: 'password123',
+        name: 'Regular User',
+        role: 'USER',
+        salary: 50000, // Sensible info
+      })
+      .expect(201);
+    userToken = (userRes.body as AuthResponse).accessToken;
+
+    // 2. manager
+    const managerRes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: `manager_${Date.now()}@test.com`,
+        password: 'password123',
+        name: 'Manager',
+        role: 'MANAGER',
+      })
+      .expect(201);
+    managerToken = (managerRes.body as AuthResponse).accessToken;
+
+    // 3. Admin
+    const adminRes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: `admin_${Date.now()}@test.com`,
+        password: 'password123',
+        name: 'The Admin',
+        role: 'ADMIN',
+      })
+      .expect(201);
+    adminToken = (adminRes.body as AuthResponse).accessToken;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  describe('Resource Authorization', () => {
+    it('Setup: the user creates a resource', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/documents')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ title: 'My Private Doc', content: 'Secret' })
+        .expect(201);
+
+      const body = res.body as DocumentResponse;
+      targetDocId = body.id;
+      targetUserId = body.ownerId;
+    });
+
+    it('PASS: the user accesses his own resource', async () => {
+      await request(app.getHttpServer())
+        .get(`/documents/${targetDocId}`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(200);
+    });
+
+    it('FAIL: a manager tries to access a 3rd party document', async () => {
+      // a manager cannot access the documents from another user
+      await request(app.getHttpServer())
+        .get(`/documents/${targetDocId}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .expect(403);
+    });
+  });
+
+  describe('Attribute Authorization', () => {
+    it('Manager cannot see the salary of another user', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/users/${targetUserId}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .expect(200);
+
+      const body = res.body as UserResponse;
+
+      // Requirement: Manager sees name/email, NOT salary
+      expect(body.email).toBeDefined();
+      expect(body.salary).toBeUndefined();
+    });
+
+    it('Admin can see all users data', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/users/${targetUserId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as UserResponse;
+
+      // Requirement: Admin sees confidential data
+      expect(body.email).toBeDefined();
+      expect(body.salary).toBeDefined();
+      expect(body.salary).toBe(50000);
+    });
+  });
+
+  describe('Endpoint Authorization', () => {
+    // Create a FRESH user for deletion tests
+    let userToDeleteId: number;
+
+    it('Setup: Create a disposable user for deletion', async () => {
+      // We register a new user to delete
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          email: `delete_me_${Date.now()}@test.com`,
+          password: 'password123',
+          name: 'Disposable User',
+          role: 'USER',
+        })
+        .expect(201);
+
+      // Admin lists users and finds it.
+      const listRes = await request(app.getHttpServer())
+        .get('/users')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const users = listRes.body as UserResponse[];
+      const user = users.find((u) => u.email?.startsWith('delete_me_'));
+      if (!user) throw new Error('Could not find disposable user');
+      userToDeleteId = user.id;
+    });
+
+    it('FAIL: Manager tries to delete admin user', async () => {
+      await request(app.getHttpServer())
+        .delete(`/users/${userToDeleteId}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .expect(403);
+    });
+
+    it('PASS: Admins can delete users', async () => {
+      await request(app.getHttpServer())
+        .delete(`/users/${userToDeleteId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+    });
+
+    it('Verify Deletion: Resource is gone', async () => {
+      await request(app.getHttpServer())
+        .get(`/users/${userToDeleteId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+    });
+  });
+});

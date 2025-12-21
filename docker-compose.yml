@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # The NestJS API
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: abac_api
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/abac_db?schema=public
+      - JWE_SECRET=super_secret_key_must_be_32_bytes_long_minimum_for_aes_256
+      - LOG_DIR=logs
+    depends_on:
+      - postgres
+    volumes:
+      - ./logs:/app/logs # Persist logs outside container
+    command: sh -c "npx prisma migrate deploy && node dist/main"
+    restart: unless-stopped
+
+  # The Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: abac_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: abac_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
