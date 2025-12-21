@@ -227,4 +227,10 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
         .expect(404);
     });
   });
+
+  describe('Public Endpoints', () => {
+    it('should access Swagger UI without auth', async () => {
+      await request(app.getHttpServer()).get('/api').expect(200);
+    });
+  });
 });
