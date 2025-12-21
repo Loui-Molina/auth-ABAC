@@ -29,7 +29,6 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
   let adminToken: string;
 
   // IDs
-  // we reuse the ids
   let targetUserId: number;
   let targetDocId: number;
 
@@ -44,7 +43,7 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
     );
     await app.init();
 
-    // 1. We create a user
+    // 1. Register Regular User (Resource Owner)
     const userRes = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
@@ -57,7 +56,7 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
       .expect(201);
     userToken = (userRes.body as AuthResponse).accessToken;
 
-    // 2. manager
+    // 2. Register Manager (Attribute Viewer)
     const managerRes = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
@@ -69,7 +68,7 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
       .expect(201);
     managerToken = (managerRes.body as AuthResponse).accessToken;
 
-    // 3. Admin
+    // 3. Register Admin (Endpoint Master)
     const adminRes = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
@@ -84,6 +83,32 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  describe('Authentication Flow', () => {
+    it('should login successfully and return a token', async () => {
+      const loginEmail = `login_test_${Date.now()}@test.com`;
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          email: loginEmail,
+          password: 'password123',
+          name: 'Login Tester',
+          role: 'USER',
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: loginEmail,
+          password: 'password123',
+        })
+        .expect(200);
+
+      const body = res.body as AuthResponse;
+      expect(body.accessToken).toBeDefined();
+    });
   });
 
   describe('Resource Authorization', () => {
@@ -106,17 +131,24 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
         .expect(200);
     });
 
-    it('FAIL: a manager tries to access a 3rd party document', async () => {
+    it('FAILURE: Manager (Different User) tries to access User document', async () => {
       // a manager cannot access the documents from another user
       await request(app.getHttpServer())
         .get(`/documents/${targetDocId}`)
         .set('Authorization', `Bearer ${managerToken}`)
         .expect(403);
     });
+
+    it('should return 404 for non-existent document', async () => {
+      await request(app.getHttpServer())
+        .get('/documents/999999')
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(404);
+    });
   });
 
   describe('Attribute Authorization', () => {
-    it('Manager cannot see the salary of another user', async () => {
+    it('Manager queries User Profile: Sees Email, Salary is HIDDEN', async () => {
       const res = await request(app.getHttpServer())
         .get(`/users/${targetUserId}`)
         .set('Authorization', `Bearer ${managerToken}`)
@@ -129,7 +161,7 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
       expect(body.salary).toBeUndefined();
     });
 
-    it('Admin can see all users data', async () => {
+    it('Admin queries User Profile: Sees EVERYTHING', async () => {
       const res = await request(app.getHttpServer())
         .get(`/users/${targetUserId}`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -149,25 +181,27 @@ describe('ABAC System - Challenge Requirements (E2E)', () => {
     let userToDeleteId: number;
 
     it('Setup: Create a disposable user for deletion', async () => {
-      // We register a new user to delete
+      // Create user using a separate request to ensure clean state
+      const setupEmail = `delete_me_${Date.now()}@test.com`;
       await request(app.getHttpServer())
         .post('/auth/register')
         .send({
-          email: `delete_me_${Date.now()}@test.com`,
+          email: setupEmail,
           password: 'password123',
           name: 'Disposable User',
           role: 'USER',
         })
         .expect(201);
 
-      // Admin lists users and finds it.
+      // Admin finds the user to delete
       const listRes = await request(app.getHttpServer())
         .get('/users')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
       const users = listRes.body as UserResponse[];
-      const user = users.find((u) => u.email?.startsWith('delete_me_'));
+      const user = users.find((u) => u.email && u.email.includes(setupEmail));
+
       if (!user) throw new Error('Could not find disposable user');
       userToDeleteId = user.id;
     });
