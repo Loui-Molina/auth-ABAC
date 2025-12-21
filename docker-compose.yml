@@ -19,7 +19,7 @@ services:
       - postgres
     volumes:
       - ./logs:/app/logs # Persist logs outside container
-    command: sh -c "npx prisma migrate deploy && node dist/main"
+    command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
     restart: unless-stopped
 
   # The Database
