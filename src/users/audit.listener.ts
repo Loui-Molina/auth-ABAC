@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { WinstonLogger } from '../common/logger/winston.logger';
 import { UserRegisteredEvent } from './events/user.registered.event';
 

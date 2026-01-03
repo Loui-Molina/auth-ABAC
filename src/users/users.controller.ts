@@ -9,10 +9,10 @@ import {
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { plainToInstance } from 'class-transformer';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
-import { PoliciesGuard } from 'src/auth/policies/guard';
 import { UserResponseDto } from './dto/user.response.dto';
-import { CheckPolicies } from '../auth/policies/check.decorator';
 import { getSerializationGroups } from '../common/serialization.utility';
+import { PoliciesGuard } from '../casl/policies/guard';
+import { CheckPolicies } from '../casl/policies/check.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()

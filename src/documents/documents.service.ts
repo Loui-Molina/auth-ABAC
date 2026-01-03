@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,7 +9,7 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 import { WinstonLogger } from '../common/logger/winston.logger';
 import { Document } from '@prisma/client';
 import { CaslAbilityFactory } from '../casl/casl-ability.factory';
-import { AuthUser } from 'src/auth/interfaces/auth-user.interface';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { subject } from '@casl/ability';
 
 @Injectable()
@@ -31,10 +32,15 @@ export class DocumentsService {
   }
 
   async findOne(id: number, requestingUser: AuthUser): Promise<Document> {
+    if (!id || isNaN(id)) {
+      this.logger.warn(`Invalid Document ID requested: ${id}`);
+      throw new BadRequestException('Invalid Document ID');
+    }
+
     this.logger.debug(`Fetching document with ID: ${id}`);
     const doc = await this.prisma.document.findUnique({
       where: { id },
-      include: { owner: true }, // Include owner to serialize if needed
+      include: { owner: true },
     });
 
     if (!doc) {

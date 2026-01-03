@@ -2,39 +2,23 @@ import { Expose, Type } from 'class-transformer';
 import { UserResponseDto } from '../../users/dto/user.response.dto';
 
 export class DocumentResponseDto {
-  constructor(
-    id: number,
-    title: string,
-    content: string,
-    ownerId: number,
-    owner: UserResponseDto,
-    createdAt: Date,
-  ) {
-    this.id = id;
-    this.title = title;
-    this.content = content;
-    this.ownerId = ownerId;
-    this.owner = owner;
-    this.createdAt = createdAt;
-  }
+  @Expose()
+  id!: number;
 
   @Expose()
-  id: number;
+  title!: string;
 
   @Expose()
-  title: string;
+  content!: string;
 
   @Expose()
-  content: string;
-
-  @Expose()
-  ownerId: number;
+  ownerId!: number;
 
   @Expose()
   @Type(() => UserResponseDto)
-  owner: UserResponseDto;
+  owner!: UserResponseDto;
 
   @Expose()
   @Type(() => Date)
-  createdAt: Date;
+  createdAt!: Date;
 }

@@ -13,17 +13,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class RegisterDto {
   @ApiProperty({ example: 'admin@company.com' })
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty({ example: 'password123', minLength: 6 })
   @IsString()
   @MinLength(6)
-  password: string;
+  password!: string;
 
   @ApiProperty({ example: 'Alicia Admin' })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiProperty({
     enum: Role,
@@ -31,7 +31,7 @@ export class RegisterDto {
     description: 'Determines access level',
   })
   @IsEnum(Role)
-  role: Role;
+  role!: Role;
 
   @ApiPropertyOptional({
     example: 90000,
@@ -61,10 +61,10 @@ export class RegisterDto {
 export class LoginDto {
   @ApiProperty({ example: 'admin@company.com' })
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty({ example: 'password123' })
   @IsString()
   @IsNotEmpty()
-  password: string;
+  password!: string;
 }

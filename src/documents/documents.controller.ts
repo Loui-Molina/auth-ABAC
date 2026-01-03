@@ -19,11 +19,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { getSerializationGroups } from 'src/common/serialization.utility';
+import { getSerializationGroups } from '../common/serialization.utility';
 import { plainToInstance } from 'class-transformer';
-import { PoliciesGuard } from 'src/auth/policies/guard';
-import { CheckPolicies } from 'src/auth/policies/check.decorator';
 import { DocumentResponseDto } from './dto/document.response.dto';
+import { CheckPolicies } from '../casl/policies/check.decorator';
+import { PoliciesGuard } from '../casl/policies/guard';
 
 @ApiTags('Documents')
 @ApiBearerAuth()

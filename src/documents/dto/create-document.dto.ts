@@ -6,10 +6,10 @@ export class CreateDocumentDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  title: string;
+  title!: string;
 
   @ApiProperty({ example: 'Confidential content...' })
   @IsString()
   @IsNotEmpty()
-  content: string;
+  content!: string;
 }

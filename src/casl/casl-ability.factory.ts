@@ -1,44 +1,50 @@
-import { AbilityBuilder, PureAbility } from '@casl/ability';
-import { createPrismaAbility, PrismaQuery, Subjects } from '@casl/prisma';
+import {
+  Ability,
+  AbilityBuilder,
+  AbilityClass,
+  ExtractSubjectType,
+} from '@casl/ability';
 import { Injectable } from '@nestjs/common';
 import { Document, Role, User } from '@prisma/client';
-import { AuthUser } from '../auth/interfaces/auth-user.interface'; // Import AuthUser
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
 
-export type AppSubjects =
-  | Subjects<{
-      User: User;
-      Document: Document;
-    }>
-  | 'all';
+type Subjects = User | Document | 'User' | 'Document' | 'all';
 
-export type AppAbility = PureAbility<[string, AppSubjects], PrismaQuery>;
+export type AppAbility = Ability<[string, Subjects]>;
 
-/***
- * We use CASL to manage user permissions
- * */
 @Injectable()
 export class CaslAbilityFactory {
   createForUser(user: AuthUser) {
-    const { can, build } = new AbilityBuilder<AppAbility>(createPrismaAbility);
+    const { can, build } = new AbilityBuilder<AppAbility>(
+      Ability as AbilityClass<AppAbility>,
+    );
 
     if (user.role === Role.ADMIN) {
-      // Admin has total control
+      // Admin can do everything
       can('manage', 'all');
+    } else if (user.role === Role.MANAGER) {
+      // Manager can read all users but not manage them
+      can('read', 'User');
+      can('aggregate', 'User');
+      can('read', 'Document');
     } else {
-      // Regular user can access their own documents
-      can(['read', 'update', 'delete'], 'Document', { ownerId: user.id });
+      // --- REGULAR USER PERMISSIONS ---
 
-      if (user.role === Role.MANAGER) {
-        // Manager can see user profiles without sensible info
-        can('read', 'User');
-        // Manager can list all users
-        can('aggregate', 'User');
-      } else {
-        // Regular user can see their own profile
-        can('read', 'User', { id: user.id });
-      }
+      // 1. User Profile
+      can('read', 'User', { id: user.id });
+
+      // 2. Documents
+      can('create', 'Document');
+      // Can only read/update/delete THEIR OWN documents
+      can(['read', 'update', 'delete'], 'Document', { ownerId: user.id });
     }
 
-    return build();
+    return build({
+      detectSubjectType: (item) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        if (item['__caslSubjectType__']) return item['__caslSubjectType__'];
+        return item.constructor as unknown as ExtractSubjectType<Subjects>;
+      },
+    });
   }
 }
