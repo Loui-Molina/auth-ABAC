@@ -4,9 +4,12 @@ import { ConfigService } from '@nestjs/config';
 import { WinstonLogger } from './common/logger/winston.logger';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  app.use(helmet());
 
   const logger = app.get(WinstonLogger);
   app.useLogger(logger);
@@ -29,9 +32,9 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
 
   const configService = app.get(ConfigService);
-  const port = configService.get('app.port') as number;
+  const port = configService.get<number>('app.port');
 
-  await app.listen(port);
+  await app.listen(port || 3000);
   logger.log(`Application is running on: http://localhost:${port}`);
   logger.log(`Swagger Docs available at: http://localhost:${port}/api`);
 }

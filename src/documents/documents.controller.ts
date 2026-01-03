@@ -1,7 +1,7 @@
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
-  ForbiddenException,
   Get,
   Param,
   Post,
@@ -11,62 +11,61 @@ import {
 } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
-import { DocumentEntity } from './entities/document.entity';
 import { AuthGuard } from '../auth/guards/auth.guard';
-import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
-import { RoleSerializerInterceptor } from '../common/interceptors/role-serializer.interceptor';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { subject } from '@casl/ability';
+import { getSerializationGroups } from 'src/common/serialization.utility';
+import { plainToInstance } from 'class-transformer';
+import { PoliciesGuard } from 'src/auth/policies/guard';
+import { CheckPolicies } from 'src/auth/policies/check.decorator';
+import { DocumentResponseDto } from './dto/document.response.dto';
 
 @ApiTags('Documents')
 @ApiBearerAuth()
 @Controller('documents')
-@UseGuards(AuthGuard)
-@UseInterceptors(RoleSerializerInterceptor)
+@UseGuards(AuthGuard, PoliciesGuard)
+@UseInterceptors(ClassSerializerInterceptor)
 export class DocumentsController {
-  constructor(
-    private readonly documentsService: DocumentsService,
-    private readonly caslAbilityFactory: CaslAbilityFactory,
-  ) {}
+  constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a private document' })
-  @ApiResponse({ status: 201, type: DocumentEntity })
+  @ApiResponse({ status: 201, type: DocumentResponseDto })
+  // 2. Static Check: Can they create documents? (Usually yes for auth users, but good to be explicit)
+  @CheckPolicies((ability) => ability.can('create', 'Document'))
   async create(
     @Req() req: AuthenticatedRequest,
     @Body() dto: CreateDocumentDto,
-  ): Promise<DocumentEntity> {
-    if (!req.user) throw new ForbiddenException();
-
+  ): Promise<DocumentResponseDto> {
     const doc = await this.documentsService.create(req.user.id, dto);
-    return new DocumentEntity(doc);
+
+    const groups = getSerializationGroups(req.user, doc);
+
+    return plainToInstance(DocumentResponseDto, doc, {
+      excludeExtraneousValues: true,
+      groups,
+    });
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get document (Owner Only)' })
-  @ApiResponse({ status: 200, type: DocumentEntity })
+  @ApiResponse({ status: 200, type: DocumentResponseDto })
   async findOne(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
-  ): Promise<DocumentEntity> {
-    if (!req.user) throw new ForbiddenException();
+  ): Promise<DocumentResponseDto> {
+    const document = await this.documentsService.findOne(+id, req.user);
 
-    const document = await this.documentsService.findOne(+id);
+    const groups = getSerializationGroups(req.user, document);
 
-    const ability = this.caslAbilityFactory.createForUser(req.user);
-
-    if (ability.cannot('read', subject('Document', document))) {
-      throw new ForbiddenException(
-        'You do not have permission to access this resource',
-      );
-    }
-
-    return new DocumentEntity(document);
+    return plainToInstance(DocumentResponseDto, document, {
+      excludeExtraneousValues: true,
+      groups,
+    });
   }
 }

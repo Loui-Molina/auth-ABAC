@@ -3,19 +3,22 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { JweService } from './jwe.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import * as bcrypt from 'bcrypt';
 import { WinstonLogger } from '../common/logger/winston.logger';
 import { Role } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { UserRegisteredEvent } from '../users/events/user.registered.event';
+import { UserRepository } from '../users/interfaces/user.repository.interface';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly userRepository: UserRepository,
     private readonly jweService: JweService,
     private readonly logger: WinstonLogger,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /***
@@ -23,9 +26,8 @@ export class AuthService {
    * */
   async register(dto: RegisterDto) {
     this.logger.log(`Registering user: ${dto.email}`);
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+
+    const existing = await this.userRepository.findByEmail(dto.email);
     if (existing) {
       this.logger.warn(`Email in use: ${dto.email}`);
       throw new BadRequestException('Email in use');
@@ -33,48 +35,41 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // ACID compliant transaction
-    const user = await this.prisma.$transaction(async (tx) => {
-      // 1. We create the user
-      const newUser = await tx.user.create({
-        data: {
-          email: dto.email,
-          password: hashedPassword,
-          name: dto.name,
-          role: dto.role,
-          salary: dto.salary,
-          phoneNumber: dto.phoneNumber,
-          nationalId: dto.nationalId,
-        },
-      });
-
-      // 2. We log the event
-      await tx.auditLog.create({
-        data: {
-          action: 'USER_REGISTERED',
-          targetId: `User:${newUser.id}`,
-          payload: JSON.stringify({
-            role: newUser.role,
-            hasPii: !!dto.nationalId,
-          }),
-        },
-      });
-
-      return newUser;
+    // 1. Create User via Repository
+    const newUser = await this.userRepository.create({
+      email: dto.email,
+      password: hashedPassword,
+      name: dto.name,
+      role: dto.role,
+      salary: dto.salary,
+      phoneNumber: dto.phoneNumber,
+      nationalId: dto.nationalId,
     });
 
-    this.logger.log(`User created successfully: ${user.id} (${user.role})`);
-    return this.generateToken(user);
+    // 2. Decoupled Side Effect: Emit Event
+    this.eventEmitter.emit(
+      'user.registered',
+      new UserRegisteredEvent(
+        newUser.id,
+        newUser.email,
+        newUser.role,
+        !!dto.nationalId,
+      ),
+    );
+
+    this.logger.log(
+      `User created successfully: ${newUser.id} (${newUser.role})`,
+    );
+    return this.generateToken(newUser);
   }
 
   /***
    * Logs user into the system
    * */
   async login(dto: LoginDto) {
-    this.logger.log(`User login into account: ${dto.email}`);
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+    this.logger.log(`User login attempt: ${dto.email}`);
+
+    const user = await this.userRepository.findByEmail(dto.email);
     if (!user) {
       this.logger.warn(`Login failed: ${dto.email}`);
       throw new UnauthorizedException('Invalid credentials');

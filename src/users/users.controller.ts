@@ -1,97 +1,73 @@
-import {
-  Controller,
-  Delete,
-  ForbiddenException,
-  Get,
-  Param,
-  Req,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
-import { AuthGuard } from '../auth/guards/auth.guard';
-import { CaslAbilityFactory } from '../casl/casl-ability.factory';
+import { Controller, Delete, Get, Param, Req, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { RoleSerializerInterceptor } from '../common/interceptors/role-serializer.interceptor';
-import { UserEntity } from './entities/user.entity';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { AuthGuard } from '../auth/guards/auth.guard';
+import { plainToInstance } from 'class-transformer';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
-import { subject } from '@casl/ability';
-import { User } from '@prisma/client';
+import { PoliciesGuard } from 'src/auth/policies/guard';
+import { UserResponseDto } from './dto/user.response.dto';
+import { CheckPolicies } from '../auth/policies/check.decorator';
+import { getSerializationGroups } from '../common/serialization.utility';
 
 @ApiTags('Users')
 @ApiBearerAuth()
 @Controller('users')
-@UseGuards(AuthGuard)
-@UseInterceptors(RoleSerializerInterceptor)
+@UseGuards(AuthGuard, PoliciesGuard)
 export class UsersController {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly caslAbilityFactory: CaslAbilityFactory,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'View all users (Managers/Admins)' })
-  @ApiResponse({ status: 200, type: [UserEntity] })
-  async findAll(@Req() req: AuthenticatedRequest): Promise<UserEntity[]> {
-    if (!req.user) throw new ForbiddenException();
-
-    const ability = this.caslAbilityFactory.createForUser(req.user);
-    if (ability.cannot('aggregate', 'User')) {
-      throw new ForbiddenException(
-        'You dont have permission to view all users',
-      );
-    }
-
+  @ApiOperation({ summary: 'List all users' })
+  @ApiResponse({ status: 200, type: [UserResponseDto] })
+  @CheckPolicies((ability) => ability.can('aggregate', 'User'))
+  async findAll(@Req() req: AuthenticatedRequest): Promise<UserResponseDto[]> {
     const users = await this.usersService.findAll();
-    return users.map((user) => new UserEntity(user));
+
+    const groups = getSerializationGroups(req.user);
+
+    return plainToInstance(UserResponseDto, users, {
+      excludeExtraneousValues: true,
+      groups: groups,
+    });
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get user profile' })
-  @ApiResponse({ status: 200, type: UserEntity })
+  @ApiResponse({ status: 200, type: UserResponseDto })
   async findOne(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
-  ): Promise<UserEntity> {
-    if (!req.user) throw new ForbiddenException();
+  ): Promise<UserResponseDto> {
+    const user = await this.usersService.findOne(+id, req.user);
 
-    const ability = this.caslAbilityFactory.createForUser(req.user);
+    // Pass 'user' as targetResource to automatically check if (user.id === req.user.id)
+    const groups = getSerializationGroups(req.user, user as { id: number });
 
-    const ghostUser = { id: +id } as User; // we check if the user is trying to access his own profile
-    if (ability.cannot('read', subject('User', ghostUser))) {
-      throw new ForbiddenException(
-        'You do not have permission to view this profile',
-      );
-    }
-
-    const user = await this.usersService.findOne(+id);
-
-    return new UserEntity(user);
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+      groups: groups,
+    });
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete user (Admin Only)' })
-  @ApiResponse({ status: 200, description: 'User deleted successfully' })
+  @ApiOperation({ summary: 'Delete user' })
+  @ApiResponse({ status: 200, type: UserResponseDto })
   async remove(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
-  ): Promise<{ message: string }> {
-    if (!req.user) throw new ForbiddenException();
+  ): Promise<UserResponseDto> {
+    const user = await this.usersService.remove(+id, req.user);
 
-    const ability = this.caslAbilityFactory.createForUser(req.user);
+    const groups = getSerializationGroups(req.user, user as { id: number });
 
-    // Strict Endpoint Auth check: Only Admins have 'delete' on Users
-    if (ability.cannot('delete', 'User')) {
-      throw new ForbiddenException('Only Admins can delete users');
-    }
-
-    await this.usersService.remove(+id);
-
-    return { message: 'User deleted successfully' };
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+      groups: groups,
+    });
   }
 }

@@ -3,12 +3,16 @@ import { ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { resolve } from 'path';
+import { ClsService } from 'nestjs-cls';
 
 @Injectable()
 export class WinstonLogger implements LoggerService {
   private readonly logger: winston.Logger;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly cls: ClsService,
+  ) {
     const logDirectory =
       this.configService.get<string>('app.logDirectory') || 'logs';
     const nodeEnv = this.configService.get<string>('app.nodeEnv');
@@ -42,8 +46,11 @@ export class WinstonLogger implements LoggerService {
             winston.format.ms(),
             winston.format.colorize(),
             winston.format.printf(
-              ({ timestamp, level, message, ms, stack }) => {
-                return `${timestamp as string} ${level}: ${message as string} ${ms as string} ${(stack as string) || ''}`;
+              ({ timestamp, level, message, ms, stack, ...meta }) => {
+                const traceId = meta['traceId']
+                  ? `[${JSON.stringify(meta['traceId'])}] `
+                  : '';
+                return `${timestamp as string} ${traceId}${level}: ${message as string} ${ms as string} ${(stack as string) || ''}`;
               },
             ),
           ),
@@ -54,23 +61,28 @@ export class WinstonLogger implements LoggerService {
     });
   }
 
+  private getContext() {
+    const traceId = this.cls.getId();
+    return traceId ? { traceId } : {};
+  }
+
   log(message: string) {
-    this.logger.info(message);
+    this.logger.info(message, this.getContext());
   }
 
   error(message: string, trace?: string) {
-    this.logger.error(message, { trace });
+    this.logger.error(message, { trace, ...this.getContext() });
   }
 
   warn(message: string) {
-    this.logger.warn(message);
+    this.logger.warn(message, this.getContext());
   }
 
   debug(message: string) {
-    this.logger.debug(message);
+    this.logger.debug(message, this.getContext());
   }
 
   verbose(message: string) {
-    this.logger.verbose(message);
+    this.logger.verbose(message, this.getContext());
   }
 }
